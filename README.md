@@ -24,3 +24,6 @@ Final Answer: Gamal Abdel Nasser was the president of Egypt when a man walked on
 
 if you want to try it out :
 https://multi-agent.onrender.com/
+
+the colab notebook link:
+https://colab.research.google.com/drive/1ig-6mo9_BMKL5TTzw-R5WLh7N33rfREZ?usp=sharing
