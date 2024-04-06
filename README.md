@@ -3,6 +3,8 @@ AI multi-agent and self-ask
 Given a question provided by the user:
 
 🤖 Research agent: uses self-asking, a questioning technique where you ask yourself a series of questions to help you understand a topic or solve a problem. It involves breaking down a complex question into smaller, more manageable questions that are easier to answer. And eventually, answer the main question.
+
+
 🤖 Code agent: based on the final answer, generates the code to draw a chart.
 For example:
 
