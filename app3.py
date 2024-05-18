@@ -13,12 +13,12 @@ model = genai.GenerativeModel('gemini-pro')
 chat = model.start_chat(history=[])
 
 def main():
-    st.title('AI multi-agent and self-ask')
+    st.title('MR Genius')
 
     # Description of the app
-    st.write("Welcome to the AI multi-agent and self-ask app. This app utilizes multiple AI agents to assist you with your queries.")
+    st.write("Welcome to Mr Genius app. This app utilizes multiple AI agents to assist you with your queries.")
     st.write("🤖 Research agent: This agent employs self-asking, a questioning technique where you ask yourself a series of questions to help understand a topic or solve a problem. It involves breaking down a complex question into smaller, more manageable questions, eventually leading to answering the main question.")
-    st.write("🤖 Code agent: Based on the final answer provided by the research agent, this agent generates the code necessary to draw a chart.")
+    #st.write("🤖 Code agent: Based on the final answer provided by the research agent, this agent generates the code necessary to draw a chart.")
 
     instruction = "You are An AI researcher that can do any complex tasks by using self asking method. Use self asking to answer any question, and show the intermediate questions and answers. Put the final answer after (Final answer) section and so on with any user questions."
     input_key = 0  # Initialize key for text input widgets
