@@ -2,9 +2,12 @@ import os
 import logging
 import json
 import requests
+import threading
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 from dotenv import load_dotenv
+# Add web server imports
+from flask import Flask, request
 
 # Load environment variables
 load_dotenv()
@@ -19,9 +22,21 @@ logger = logging.getLogger(__name__)
 # Get API endpoint from environment
 API_BASE_URL = os.getenv("API_BASE_URL", "https://vectaraaa.onrender.com")
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+PORT = int(os.environ.get("PORT", 8080))
 
-# Default approach is now full_context
+# Default approach is full_context
 DEFAULT_APPROACH = "full_context"
+
+# Initialize Flask app for health check
+flask_app = Flask(__name__)
+
+@flask_app.route('/')
+def index():
+    return 'Telegram Bot is running!'
+
+@flask_app.route('/health')
+def health():
+    return {'status': 'healthy', 'message': 'Telegram bot is operational'}
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Send a welcome message when the command /start is issued."""
@@ -164,8 +179,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             "❌ حدث خطأ أثناء معالجة استفسارك. يرجى المحاولة مرة أخرى لاحقاً.\n\n❌ An error occurred while processing your query. Please try again later."
         )
 
-def main() -> None:
-    """Start the bot."""
+def run_bot():
+    """Setup and run the telegram bot in a separate thread"""
     if not TELEGRAM_BOT_TOKEN:
         logger.error("No TELEGRAM_BOT_TOKEN found in environment variables!")
         return
@@ -183,6 +198,17 @@ def main() -> None:
     
     # Run the bot until the user presses Ctrl-C
     application.run_polling(allowed_updates=Update.ALL_TYPES)
+
+def main():
+    """Start both the Flask web server and Telegram bot"""
+    # Start the Telegram bot in a separate thread
+    bot_thread = threading.Thread(target=run_bot)
+    bot_thread.daemon = True
+    bot_thread.start()
+    
+    # Run the Flask web server in the main thread
+    # This keeps the app running and listening on a port that Render expects
+    flask_app.run(host='0.0.0.0', port=PORT)
 
 if __name__ == "__main__":
     main()
