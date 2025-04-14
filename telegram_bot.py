@@ -2,12 +2,12 @@ import os
 import logging
 import json
 import requests
-import threading
+import asyncio
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 from dotenv import load_dotenv
-# Add web server imports
-from flask import Flask, request
+# Use a more thread-friendly Flask alternative
+from quart import Quart
 
 # Load environment variables
 load_dotenv()
@@ -27,15 +27,15 @@ PORT = int(os.environ.get("PORT", 8080))
 # Default approach is full_context
 DEFAULT_APPROACH = "full_context"
 
-# Initialize Flask app for health check
-flask_app = Flask(__name__)
+# Initialize Quart app (async version of Flask)
+app = Quart(__name__)
 
-@flask_app.route('/')
-def index():
+@app.route('/')
+async def index():
     return 'Telegram Bot is running!'
 
-@flask_app.route('/health')
-def health():
+@app.route('/health')
+async def health():
     return {'status': 'healthy', 'message': 'Telegram bot is operational'}
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -140,8 +140,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             "approach": DEFAULT_APPROACH
         }
         
-        # Send query to API
-        response = requests.post(
+        # Use requests in a non-blocking way
+        response = await asyncio.to_thread(
+            requests.post,
             f"{API_BASE_URL}/query/",
             json=payload
         )
@@ -179,13 +180,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             "❌ حدث خطأ أثناء معالجة استفسارك. يرجى المحاولة مرة أخرى لاحقاً.\n\n❌ An error occurred while processing your query. Please try again later."
         )
 
-def run_bot():
-    """Setup and run the telegram bot in a separate thread"""
+async def setup_bot():
+    """Setup the telegram bot application"""
     if not TELEGRAM_BOT_TOKEN:
         logger.error("No TELEGRAM_BOT_TOKEN found in environment variables!")
-        return
+        return None
     
-    # Create the Application and pass it your bot's token
+    # Create the Application
     application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
     
     # Add command handlers
@@ -196,19 +197,53 @@ def run_bot():
     # Add message handler for user questions
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     
-    # Run the bot until the user presses Ctrl-C
-    application.run_polling(allowed_updates=Update.ALL_TYPES)
+    return application
 
-def main():
-    """Start both the Flask web server and Telegram bot"""
-    # Start the Telegram bot in a separate thread
-    bot_thread = threading.Thread(target=run_bot)
-    bot_thread.daemon = True
-    bot_thread.start()
+@app.before_serving
+async def on_startup():
+    """Initialize bot before the web server starts"""
+    app.bot_application = await setup_bot()
+    if app.bot_application:
+        # Start the bot
+        await app.bot_application.initialize()
+        await app.bot_application.start()
+        await app.bot_application.updater.start_polling(allowed_updates=Update.ALL_TYPES)
+        logger.info("Bot started successfully!")
+    else:
+        logger.error("Failed to initialize bot!")
+
+@app.after_serving
+async def on_shutdown():
+    """Shutdown bot when the web server stops"""
+    if hasattr(app, 'bot_application'):
+        await app.bot_application.updater.stop()
+        await app.bot_application.stop()
+        await app.bot_application.shutdown()
+        logger.info("Bot has been shut down")
+
+# Alternative approach: For Render, we can use a webhook-based approach instead of polling
+# This would be more reliable if polling doesn't work
+if os.environ.get('WEBHOOK_MODE', 'false').lower() == 'true':
+    WEBHOOK_URL = os.environ.get('WEBHOOK_URL', '')
     
-    # Run the Flask web server in the main thread
-    # This keeps the app running and listening on a port that Render expects
-    flask_app.run(host='0.0.0.0', port=PORT)
+    @app.route(f'/webhook', methods=['POST'])
+    async def webhook():
+        """Handle incoming webhook updates from Telegram"""
+        if not hasattr(app, 'bot_application'):
+            return {'error': 'Bot not initialized'}, 500
+            
+        request_data = await request.get_json()
+        update = Update.de_json(request_data, app.bot_application.bot)
+        await app.bot_application.process_update(update)
+        return {'status': 'ok'}
+    
+    @app.before_serving
+    async def setup_webhook():
+        """Set up webhook instead of polling"""
+        app.bot_application = await setup_bot()
+        if app.bot_application and WEBHOOK_URL:
+            await app.bot_application.bot.set_webhook(url=f"{WEBHOOK_URL}/webhook")
+            logger.info(f"Webhook set to {WEBHOOK_URL}/webhook")
 
 if __name__ == "__main__":
-    main()
+    app.run(host='0.0.0.0', port=PORT)
